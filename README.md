@@ -16,6 +16,21 @@ that records.
 3. **A WASM plugin host.** One process-wide audio graph, plugins in their own modules, sample buffers across a boundary
    that can be shared or copied deliberately.
 
+## What works today
+
+- Transport: position stored as integer samples and musical position derived from it, so it cannot drift; boundary
+  rule is inclusive-at-start and exclusive-at-end, so a bar-line event is never one block late.
+- Plugin delay compensation (`src/scheduler.ts`): the session runs at the latency of its slowest chain, each track is
+  delayed by `sessionLatency - trackLatency`, and the tests assert **audible** alignment rather than identical
+  delivery times. A plugin-free track is held back by the full latency; the slowest track gets offset zero.
+- 21 tests, of which the drift test checks 750 consecutive callbacks deliver every event exactly once, on the sample.
+
+## What does not work yet
+
+- No audio output yet: this is the clock and the scheduler, not a graph that produces sound.
+- No MIDI or sample loading, no WASM plugin host (that is the next milestone), no project file format.
+- No sample-rate conversion: both 44.1 and 48 kHz are computed exactly, but resampling is out of scope so far.
+
 ## Status
 
 **Stage 0: scaffolding.** The sample-clocked transport exists and is tested: tick/sample conversion at 44.1 and 48 kHz,
