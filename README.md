@@ -37,6 +37,8 @@ that records.
 bar/beat/tick derivation from samples, block slicing with an inclusive-start window, chain latency summation. There is no
 audio engine, no UI, no plugin host and no file format support yet.
 
+**Tests:** 21
+
 ```bash
 npm ci && npm run verify
 ```
