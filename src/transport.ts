@@ -10,12 +10,19 @@
  * remainder, which is what `sliceBlock` guarantees.
  */
 
+import { TempoMap, type TempoSegment } from "./tempo.js";
+
 export interface TransportConfig {
   /** Audio samples per second. 48000 and 44100 are the ones that must both be exactly right. */
   readonly sampleRate: number;
   /** Musical ticks per quarter note. 480 and 960 are common; the maths must not assume either. */
   readonly ticksPerQuarter: number;
-  readonly bpm: number;
+  /** A constant tempo. Mutually exclusive with `tempoMap`, which exists for sessions that change tempo. */
+  readonly bpm?: number;
+  /** Every tempo in the session, beginning at tick 0. */
+  readonly tempoMap?: readonly TempoSegment[];
+  /** Beats per bar for the musical grid. Defaults to 4. */
+  readonly beatsPerBar?: number;
 }
 
 export interface MusicalPosition {
@@ -40,37 +47,46 @@ export interface Block {
 const BEATS_PER_BAR = 4;
 
 export class Transport {
-  readonly #config: TransportConfig;
+  readonly #tempo: TempoMap;
 
   constructor(config: TransportConfig) {
     if (config.sampleRate <= 0) throw new RangeError("sampleRate must be positive");
     if (config.ticksPerQuarter <= 0) throw new RangeError("ticksPerQuarter must be positive");
-    if (config.bpm <= 0) throw new RangeError("bpm must be positive");
-    this.#config = config;
+    const hasBpm = config.bpm !== undefined;
+    const hasMap = config.tempoMap !== undefined;
+    if (hasBpm === hasMap) {
+      throw new RangeError("give either bpm (constant tempo) or tempoMap (tempo changes), not both or neither");
+    }
+    if (hasBpm && config.bpm! <= 0) throw new RangeError("bpm must be positive");
+    this.#tempo = new TempoMap(
+      config.sampleRate,
+      config.ticksPerQuarter,
+      hasMap ? config.tempoMap! : [{ atTick: 0, bpm: config.bpm! }],
+      { beatsPerBar: config.beatsPerBar ?? BEATS_PER_BAR },
+    );
+  }
+
+  /** The tempo map behind the clock, so a UI can draw the grid without recomputing it. */
+  get tempo(): TempoMap {
+    return this.#tempo;
   }
 
   get samplesPerTick(): number {
-    // One quarter note is 60/bpm seconds, i.e. sampleRate * 60 / bpm samples.
-    return (this.#config.sampleRate * 60) / (this.#config.bpm * this.#config.ticksPerQuarter);
+    return this.#tempo.samplesPerTickAt(0);
   }
 
   tickToSample(tick: number): number {
-    return Math.round(tick * this.samplesPerTick);
+    return this.#tempo.tickToSample(tick);
   }
 
   sampleToTick(sample: number): number {
-    return Math.round(sample / this.samplesPerTick);
+    return this.#tempo.sampleToTick(sample);
   }
 
   /** Musical position for a sample, derived from samples so it cannot drift. */
   positionAt(sample: number): MusicalPosition {
     if (sample < 0) throw new RangeError("sample must not be negative");
-    const tick = this.sampleToTick(sample);
-    const ticksPerBeat = this.#config.ticksPerQuarter;
-    const ticksPerBar = ticksPerBeat * BEATS_PER_BAR;
-    const bar = Math.floor(tick / ticksPerBar);
-    const withinBar = tick - bar * ticksPerBar;
-    return { bar: bar + 1, beat: Math.floor(withinBar / ticksPerBeat) + 1, tick: withinBar % ticksPerBeat };
+    return this.#tempo.positionOf(this.#tempo.sampleToTick(sample));
   }
 
   /**

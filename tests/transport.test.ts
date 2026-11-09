@@ -53,3 +53,47 @@ describe("sample-clocked transport", () => {
     expect(() => at120(48_000).sliceBlock(0, 0, [])).toThrow(RangeError);
   });
 });
+
+describe("transport over a tempo map", () => {
+  it("places a bar line exactly across a tempo change", () => {
+    const transport = new Transport({
+      sampleRate: 48000,
+      ticksPerQuarter: 480,
+      tempoMap: [
+        { atTick: 0, bpm: 120 },
+        { atTick: 1920, bpm: 60 },
+      ],
+    });
+    expect(transport.tickToSample(1920)).toBe(96000);
+    expect(transport.tickToSample(3840)).toBe(288000);
+    expect(transport.positionAt(96000)).toEqual({ bar: 2, beat: 1, tick: 0 });
+  });
+
+  it("requires exactly one of bpm and tempoMap", () => {
+    expect(() => new Transport({ sampleRate: 48000, ticksPerQuarter: 480 })).toThrow(/either bpm/);
+    expect(
+      () =>
+        new Transport({
+          sampleRate: 48000,
+          ticksPerQuarter: 480,
+          bpm: 120,
+          tempoMap: [{ atTick: 0, bpm: 120 }],
+        }),
+    ).toThrow(/either bpm/);
+  });
+
+  it("keeps the same block semantics when the tempo changes mid-block", () => {
+    const transport = new Transport({
+      sampleRate: 48000,
+      ticksPerQuarter: 480,
+      tempoMap: [
+        { atTick: 0, bpm: 120 },
+        { atTick: 480, bpm: 60 },
+      ],
+    });
+    const events = [0, 480, 960].map((tick) => ({ tick, sample: transport.tickToSample(tick) }));
+    const block = transport.sliceBlock(0, 48000, events);
+    expect(block.events.map((placed) => placed.event.tick)).toEqual([0, 480]);
+    expect(block.events[1]!.offset).toBe(24000);
+  });
+});
