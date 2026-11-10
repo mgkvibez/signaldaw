@@ -76,6 +76,11 @@ export class Scheduler {
     return this.#sessionLatency - this.trackLatency(trackId);
   }
 
+  /** The sample a track's event actually sounds at, after compensation. One definition, used everywhere. */
+  deliverySample(event: TrackEvent): number {
+    return event.sample + this.schedulingOffset(event.trackId);
+  }
+
   /**
    * The events of one audio block, already compensated and sorted.
    *
@@ -90,7 +95,7 @@ export class Scheduler {
     const dispatched: DispatchedEvent[] = [];
 
     for (const event of events) {
-      const deliverySample = event.sample + this.schedulingOffset(event.trackId);
+      const deliverySample = this.deliverySample(event);
       if (deliverySample < startSample || deliverySample >= end) continue;
       dispatched.push({
         trackId: event.trackId,
